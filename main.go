@@ -241,6 +241,9 @@ var wordList = []string{
 	"scratch", "stomp", "raptor", "trigger", "fire", "is",
 	"tin", "zap", "clue", "hunt", "lit", "row", "sew", "tie", "tea", "sip", "granite",
 	"brew", "splat", "ice", "zen", "tend", "fork", "bell", "pan",
+	"cup", "salt", "rain", "snow", "fast", "jump", "lap", "eye", "ear", "nose",
+	"quantum", "atom", "moon", "quick", "web", "rent", "cloud", "final",
+	"flex",
 }
 
 type printRequest struct {
