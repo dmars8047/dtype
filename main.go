@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 	"sync"
@@ -11,7 +12,7 @@ import (
 )
 
 const (
-	testDurationSeconds  = 5
+	testDurationSeconds  = 30
 	promptLineCount      = 20
 	maxCharactersPerLine = 80
 	startingRow          = 8
@@ -53,10 +54,20 @@ func NewPrompt() *Prompt {
 
 		var numCharactersInLine int
 
+		prevIdx := -1
+
 		// Keep adding words to the current line until we approach maxCharactersPerLine
 		for {
+			idx := -2
+
+			for idx == -2 || idx == prevIdx {
+				idx = rand.Intn(len(wordList))
+			}
+
+			prevIdx = idx
+
 			// Get a random word from the wordList
-			randomWord := MakeWord(wordList[rand.Intn(len(wordList))])
+			randomWord := MakeWord(wordList[idx])
 
 			// Calculate how many characters this word would add (including space)
 			numCharactersInLine += len(randomWord.Value)
@@ -115,7 +126,7 @@ func (p *Prompt) RenderScreenBuffer() []string {
 	sb.WriteString(welcomeMessage)
 
 	for lineIdx, line := range p.Lines {
-		for wordIdx, word := range line.Words {
+		for _, word := range line.Words {
 			// Process each character in the word
 			for charIdx, r := range word.Value {
 				if charIdx < len(word.CharStatuses) {
@@ -145,9 +156,9 @@ func (p *Prompt) RenderScreenBuffer() []string {
 			}
 
 			// Add a space after each word except the last one in the line
-			if wordIdx < len(line.Words)-1 {
-				sb.WriteString(" ")
-			}
+			// if wordIdx < len(line.Words)-1 {
+			// 	sb.WriteString(" ")
+			// }
 		}
 
 		// Add a newline after each line except the last one
@@ -170,8 +181,8 @@ type Word struct {
 
 func MakeWord(value string) Word {
 	return Word{
-		Value:        value,
-		CharStatuses: make([]CharacterStatus, len(value)),
+		Value:        fmt.Sprintf("%s ", value),
+		CharStatuses: make([]CharacterStatus, len(value)+1),
 	}
 }
 
@@ -196,10 +207,12 @@ var wordList = []string{
 	"than", "then", "now", "look", "only", "come", "its", "over", "think", "also",
 	"back", "after", "use", "two", "how", "our", "work", "first", "well", "way",
 	"even", "new", "want", "because", "any", "these", "give", "day", "most", "us",
-	"those", "such", "through", "between", "own", "both", "few", "while", "might", "place",
+	"those", "such", "through", "between", "both", "few", "while", "might", "place",
 	"long", "need", "same", "right", "look", "still", "own", "last", "never", "under",
 	"double", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
-	"triple", "baseball", "video", "computer", "global", "save", "widget", "cell",
+	"triple", "baseball", "video", "computer", "global", "save", "widget", "cell", "stream", "input",
+	"output", "love", "peace", "world", "hello", "tangle", "hero", "villain",
+	"goodbye", "goodnight", "morning", "night", "day", "week", "month", "year", "super",
 }
 
 // ANSI color codes
@@ -254,7 +267,7 @@ func main() {
 			// Print "Time's up!" below the prompt on a new row.
 			lastLine := len(oldScreen)
 			fmt.Printf("\033[%d;1H", lastLine+2) // Move to row below prompt (with one blank line)
-			fmt.Println("Time's up!")
+			fmt.Printf("Time's up!\n\n")
 			// Calculate the number of correct words typed
 			correctWords := 0
 			for _, line := range prompt.Lines {
@@ -266,14 +279,17 @@ func main() {
 							break
 						}
 					}
+
 					if correct {
 						correctWords++
 					}
 				}
 			}
 			fmt.Printf("You typed %d words correctly.\n", correctWords)
+			// Words per minute calculation
+			wpm := float64(correctWords) / (float64(testDurationSeconds) / 60.0)
+			fmt.Printf("That's approximately %d words per minute!\n", int(math.Ceil(wpm)))
 			// block for a few seconds to allow the user to see the final result
-			time.Sleep(5 * time.Second)
 			return
 		}
 	}()
@@ -281,7 +297,6 @@ func main() {
 	wg.Add(1)
 
 	go func() {
-		defer fmt.Print("EXITING")
 		defer keyboard.Close()
 		defer wg.Done()
 
@@ -290,16 +305,16 @@ func main() {
 			currentLine := &prompt.Lines[prompt.LineIndex]
 			currentWord := &currentLine.Words[currentLine.WordIndex]
 
-			char, key, err := keyboard.GetSingleKey()
+			typedChar, key, err := keyboard.GetSingleKey()
 			if err != nil {
-				fmt.Println("Error reading key:", err)
 				endChan <- struct{}{}
 				return
 			}
 
 			if key == keyboard.KeyEsc || key == keyboard.KeyCtrlC {
-				fmt.Print("\r")
-				fmt.Printf("\nExiting...\n\n")
+				lastLine := len(oldScreen)
+				fmt.Printf("\033[%d;1H", lastLine+2) // Move to row below prompt (with one blank line)
+				fmt.Printf("Exiting...\n\n")
 				endChan <- struct{}{}
 				return
 			}
@@ -323,20 +338,12 @@ func main() {
 					currentWord = &currentLine.Words[currentLine.WordIndex]
 					currentWord.CharStatuses[len(currentWord.CharStatuses)-1] = NotSet
 				}
-			} else if key == keyboard.KeySpace {
-				// if the user types a space and they are at the end of the current word then go to the next word
-				if currentWord.CharIndex >= len(currentWord.Value) {
-					currentLine.WordIndex++
-				}
 			} else {
-				if currentWord.CharIndex >= len(currentWord.Value) {
-					continue
-				}
-
 				// Compare the character with the expected character
 				var status CharacterStatus
+				expectedChar := currentWord.Value[currentWord.CharIndex]
 
-				if char == rune(currentWord.Value[currentWord.CharIndex]) {
+				if typedChar == rune(expectedChar) || (key == keyboard.KeySpace && currentWord.Value[currentWord.CharIndex] == ' ') {
 					status = Correct
 				} else {
 					status = Incorrect
@@ -384,7 +391,7 @@ func computeCursorPosition(prompt *Prompt, startRow, startCol int) (int, int) {
 
 	// For each complete word in the current line add the word length and a space.
 	for i := 0; i < currentLine.WordIndex && i < len(currentLine.Words); i++ {
-		col += len(currentLine.Words[i].Value) + 1 // add one for the space
+		col += len(currentLine.Words[i].Value) // add one for the space
 	}
 
 	// If the user is still in the middle of a word,
