@@ -337,29 +337,6 @@ func main() {
 						return
 					case <-timer.C:
 						keyboard.Close()
-						// Print "Time's up!" below the prompt on a new row.
-						lastLine := len(oldScreen)
-						fmt.Printf("\033[%d;1H", lastLine+2)
-						fmt.Printf("Time's up!\n\n")
-						// Calculate the number of correct words typed
-						correctWords := 0
-						for _, line := range prompt.Lines {
-							for _, word := range line.Words {
-								correct := true
-								for _, status := range word.CharStatuses {
-									if status != Correct {
-										correct = false
-										break
-									}
-								}
-								if correct {
-									correctWords++
-								}
-							}
-						}
-						fmt.Printf("You typed %d words correctly.\n", correctWords)
-						wpm := float64(correctWords) / (float64(testDurationSeconds) / 60.0)
-						fmt.Printf("That's approximately %d words per minute!\n", int(math.Ceil(wpm)))
 						return
 					}
 				}()
@@ -465,6 +442,30 @@ func main() {
 	fmt.Printf("\033[%d;%dH", row, col)
 
 	wg.Wait()
+
+	// Print "Time's up!" below the prompt on a new row.
+	lastLine := len(oldScreen)
+	fmt.Printf("\033[%d;1H", lastLine+2)
+	fmt.Printf("Time's up!\n\n")
+	// Calculate the number of correct words typed
+	correctWords := 0
+	for _, line := range prompt.Lines {
+		for _, word := range line.Words {
+			correct := true
+			for _, status := range word.CharStatuses {
+				if status != Correct {
+					correct = false
+					break
+				}
+			}
+			if correct {
+				correctWords++
+			}
+		}
+	}
+	fmt.Printf("You typed %d words correctly.\n", correctWords)
+	wpm := float64(correctWords) / (float64(testDurationSeconds) / 60.0)
+	fmt.Printf("That's approximately %d words per minute!\n", int(math.Ceil(wpm)))
 }
 
 func computeCursorPosition(prompt *Prompt, startRow, startCol int) (int, int) {
