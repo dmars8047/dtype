@@ -246,8 +246,8 @@ func main() {
 
 	flag.Parse()
 
-	if testDurationSeconds < 1 {
-		fmt.Println("The test duration must be at least 1 second.")
+	if testDurationSeconds < 10 {
+		fmt.Println("The test duration must be at least 10 second.")
 		return
 	}
 
