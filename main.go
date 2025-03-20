@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultTestDuration  = 60
+	defaultTestDuration  = 30
 	startingLineCount    = 3
 	maxCharactersPerLine = 60
 	startingRow          = 17
@@ -71,41 +71,39 @@ func addNewLine(prompt *Prompt) {
 	}
 
 	var numCharactersInLine int
-
+	usedWords := make(map[string]bool)
 	prevIdx := -1
 
 	// Keep adding words to the current line until we approach maxCharactersPerLine
 	for {
 		idx := -2
-
 		for idx == -2 || idx == prevIdx {
 			idx = rand.Intn(len(wordList))
 		}
-
 		prevIdx = idx
 
-		// Get a random word from the wordList
-		randomWord := MakeWord(wordList[idx])
+		candidate := wordList[idx]
+		if usedWords[candidate] {
+			continue
+		}
+		usedWords[candidate] = true
 
-		// Calculate how many characters this word would add (including space)
-		numCharactersInLine += len(randomWord.Value)
+		randomWord := MakeWord(candidate)
 
+		addLen := len(randomWord.Value)
 		if len(currentLine.Words) > 0 {
 			// Add a space for the word separator
-			numCharactersInLine++
+			addLen++
 		}
 
-		// Check if adding this word would exceed the max characters per line
-		if numCharactersInLine > maxCharactersPerLine {
-			// Line is full enough, stop adding words
+		if numCharactersInLine+addLen > maxCharactersPerLine {
 			break
 		}
 
-		// Add the word to the current line
 		currentLine.Words = append(currentLine.Words, randomWord)
+		numCharactersInLine += addLen
 	}
 
-	// Add the completed line to the prompt
 	prompt.Lines = append(prompt.Lines, currentLine)
 }
 
@@ -240,7 +238,9 @@ var wordList = []string{
 	"dungeon", "dragon", "sword", "shield", "armor", "helmet", "boots", "gloves", "ring", "amulet", "castle",
 	"eagle", "whale", "sushi", "ghost", "zombie", "rush", "crash", "slice", "bakery", "coffee",
 	"cocktail", "beer", "bear", "lion", "tiger", "attack", "decay", "envelope", "guitar", "piano", "teeth", "bite",
-	"scratch", "stomp", "raptor", "trigger", "fire",
+	"scratch", "stomp", "raptor", "trigger", "fire", "is",
+	"tin", "zap", "clue", "hunt", "lit", "row", "sew", "tie", "tea", "sip", "granite",
+	"brew", "splat", "ice", "zen", "tend", "fork", "bell", "pan",
 }
 
 type printRequest struct {
