@@ -310,6 +310,13 @@ func main() {
 		defer close(endChan)
 
 		for {
+			timerMutex.RLock()
+			if remainingSeconds <= 0 {
+				timerMutex.RUnlock()
+				return
+			}
+			timerMutex.RUnlock()
+
 			// Get the current line and word being typed
 			currentLine := &prompt.Lines[prompt.LineIndex]
 			currentWord := &currentLine.Words[currentLine.WordIndex]
