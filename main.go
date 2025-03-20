@@ -12,17 +12,19 @@ import (
 )
 
 const (
-	testDurationSeconds  = 30
-	promptLineCount      = 20
-	maxCharactersPerLine = 80
-	startingRow          = 8
+	testDurationSeconds  = 60
+	startingLineCount    = 3
+	maxCharactersPerLine = 60
+	startingRow          = 10
 	startingCol          = 0
 	welcomeMessage       = `
 Welcome to the Typing Test!
 
-You'll have 30 seconds to type as many words as you can. The test timer will start as soon as you begin typing.
+You'll have 60 seconds to type as many words as you can. The test timer will start as soon as you begin typing.
 Press any key to start the test.
 Press ESC to exit the test at any time.
+
+Time remaining: 60 seconds
 
 `
 )
@@ -47,51 +49,56 @@ func NewPrompt() *Prompt {
 	}
 
 	// Generate the exact number of lines specified by promptLineCount
-	for range promptLineCount {
-		currentLine := Line{
-			Words: []Word{},
-		}
-
-		var numCharactersInLine int
-
-		prevIdx := -1
-
-		// Keep adding words to the current line until we approach maxCharactersPerLine
-		for {
-			idx := -2
-
-			for idx == -2 || idx == prevIdx {
-				idx = rand.Intn(len(wordList))
-			}
-
-			prevIdx = idx
-
-			// Get a random word from the wordList
-			randomWord := MakeWord(wordList[idx])
-
-			// Calculate how many characters this word would add (including space)
-			numCharactersInLine += len(randomWord.Value)
-
-			if len(currentLine.Words) > 0 {
-				// Add a space for the word separator
-				numCharactersInLine++
-			}
-
-			// Check if adding this word would exceed the max characters per line
-			if numCharactersInLine > maxCharactersPerLine {
-				// Line is full enough, stop adding words
-				break
-			}
-
-			// Add the word to the current line
-			currentLine.Words = append(currentLine.Words, randomWord)
-		}
-
-		// Add the completed line to the prompt
-		prompt.Lines = append(prompt.Lines, currentLine)
+	for range startingLineCount {
+		addNewLine(&prompt)
 	}
 
 	return &prompt
+}
+
+// Dynamically generate a new line.
+func addNewLine(prompt *Prompt) {
+	currentLine := Line{
+		Words: []Word{},
+	}
+
+	var numCharactersInLine int
+
+	prevIdx := -1
+
+	// Keep adding words to the current line until we approach maxCharactersPerLine
+	for {
+		idx := -2
+
+		for idx == -2 || idx == prevIdx {
+			idx = rand.Intn(len(wordList))
+		}
+
+		prevIdx = idx
+
+		// Get a random word from the wordList
+		randomWord := MakeWord(wordList[idx])
+
+		// Calculate how many characters this word would add (including space)
+		numCharactersInLine += len(randomWord.Value)
+
+		if len(currentLine.Words) > 0 {
+			// Add a space for the word separator
+			numCharactersInLine++
+		}
+
+		// Check if adding this word would exceed the max characters per line
+		if numCharactersInLine > maxCharactersPerLine {
+			// Line is full enough, stop adding words
+			break
+		}
+
+		// Add the word to the current line
+		currentLine.Words = append(currentLine.Words, randomWord)
+	}
+
+	// Add the completed line to the prompt
+	prompt.Lines = append(prompt.Lines, currentLine)
 }
 
 // diffAndPrint compares the oldLines and newLines and updates only changed lines.
@@ -137,9 +144,14 @@ func (p *Prompt) RenderScreenBuffer() []string {
 						sb.WriteRune(r)
 						sb.WriteString(colorReset)
 					case Incorrect:
-						// Incorrectly typed characters are red
-						sb.WriteString(colorRed)
-						sb.WriteRune(r)
+						// If the expected character is a space, use dark red
+						if r == ' ' {
+							sb.WriteString(colorDarkRed)
+							sb.WriteString("█")
+						} else {
+							sb.WriteString(colorRed)
+							sb.WriteRune(r)
+						}
 						sb.WriteString(colorReset)
 					case NotSet:
 						// Characters that haven't been typed yet are yellow
@@ -154,11 +166,6 @@ func (p *Prompt) RenderScreenBuffer() []string {
 					sb.WriteString(colorReset)
 				}
 			}
-
-			// Add a space after each word except the last one in the line
-			// if wordIdx < len(line.Words)-1 {
-			// 	sb.WriteString(" ")
-			// }
 		}
 
 		// Add a newline after each line except the last one
@@ -213,15 +220,17 @@ var wordList = []string{
 	"triple", "baseball", "video", "computer", "global", "save", "widget", "cell", "stream", "input",
 	"output", "love", "peace", "world", "hello", "tangle", "hero", "villain",
 	"goodbye", "goodnight", "morning", "night", "day", "week", "month", "year", "super",
+	"wifi", "game", "click", "groove", "raspberry", "put", "post", "delete", "tiny", "core",
 }
 
 // ANSI color codes
 const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[31m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorBlue   = "\033[34m"
+	colorReset   = "\033[0m"
+	colorRed     = "\033[91m"
+	colorDarkRed = "\033[31m"
+	colorGreen   = "\033[32m"
+	colorYellow  = "\033[33m"
+	colorBlue    = "\033[34m"
 )
 
 func main() {
@@ -237,12 +246,11 @@ func main() {
 	// Present the prompt (unmodified text)
 	prompt := NewPrompt()
 
-	// Create a parallel data structure to track correctness.
-	typedStatus := make([][]bool, len(prompt.Lines))
-
-	for i := range typedStatus {
-		typedStatus[i] = make([]bool, 0, len(prompt.Lines[i].Words))
-	}
+	// Create a channel to signal termination.
+	endChan := make(chan struct{}, 1)
+	var wg sync.WaitGroup
+	// Declare timerOnce to ensure timer starts only on first key stroke.
+	var timerOnce sync.Once
 
 	// Initially show the prompt with the cursor at the start of the first word.
 	oldScreen := prompt.RenderScreenBuffer()
@@ -250,52 +258,7 @@ func main() {
 		fmt.Println(line)
 	}
 
-	timer := time.NewTimer(testDurationSeconds * time.Second)
-	endChan := make(chan struct{}, 1)
-
-	var wg sync.WaitGroup
 	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		select {
-		case <-endChan:
-			return
-		case <-timer.C:
-			keyboard.Close()
-			// Print "Time's up!" below the prompt on a new row.
-			lastLine := len(oldScreen)
-			fmt.Printf("\033[%d;1H", lastLine+2) // Move to row below prompt (with one blank line)
-			fmt.Printf("Time's up!\n\n")
-			// Calculate the number of correct words typed
-			correctWords := 0
-			for _, line := range prompt.Lines {
-				for _, word := range line.Words {
-					correct := true
-					for _, status := range word.CharStatuses {
-						if status != Correct {
-							correct = false
-							break
-						}
-					}
-
-					if correct {
-						correctWords++
-					}
-				}
-			}
-			fmt.Printf("You typed %d words correctly.\n", correctWords)
-			// Words per minute calculation
-			wpm := float64(correctWords) / (float64(testDurationSeconds) / 60.0)
-			fmt.Printf("That's approximately %d words per minute!\n", int(math.Ceil(wpm)))
-			// block for a few seconds to allow the user to see the final result
-			return
-		}
-	}()
-
-	wg.Add(1)
-
 	go func() {
 		defer keyboard.Close()
 		defer wg.Done()
@@ -311,9 +274,75 @@ func main() {
 				return
 			}
 
+			// Lazy-start timer on first keystroke.
+			timerOnce.Do(func() {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					timer := time.NewTimer(testDurationSeconds * time.Second)
+					select {
+					case <-endChan:
+						return
+					case <-timer.C:
+						keyboard.Close()
+						// Print "Time's up!" below the prompt on a new row.
+						lastLine := len(oldScreen)
+						fmt.Printf("\033[%d;1H", lastLine+2)
+						fmt.Printf("Time's up!\n\n")
+						// Calculate the number of correct words typed
+						correctWords := 0
+						for _, line := range prompt.Lines {
+							for _, word := range line.Words {
+								correct := true
+								for _, status := range word.CharStatuses {
+									if status != Correct {
+										correct = false
+										break
+									}
+								}
+								if correct {
+									correctWords++
+								}
+							}
+						}
+						fmt.Printf("You typed %d words correctly.\n", correctWords)
+						wpm := float64(correctWords) / (float64(testDurationSeconds) / 60.0)
+						fmt.Printf("That's approximately %d words per minute!\n", int(math.Ceil(wpm)))
+						return
+					}
+				}()
+
+				// Use ANSI codes to save and restore the cursor position.
+				go func() {
+					ticker := time.NewTicker(1 * time.Second)
+					defer ticker.Stop()
+					remaining := testDurationSeconds
+					for {
+						// Save current cursor position.
+						fmt.Print("\033[s")
+						// Move the cursor to the countdown line (assume row startingRow-1).
+						fmt.Printf("\033[%d;1H", startingRow-2)
+						// Print the countdown message and clear the remainder of the line.
+						fmt.Printf("Time remaining: %d seconds\033[K", remaining)
+						// Restore the previous cursor position.
+						fmt.Print("\033[u")
+						if remaining <= 0 {
+							return
+						}
+						select {
+						case <-ticker.C:
+							remaining--
+						case <-endChan:
+							return
+						}
+					}
+				}()
+			})
+
+			// Process backspace and regular typing
 			if key == keyboard.KeyEsc || key == keyboard.KeyCtrlC {
 				lastLine := len(oldScreen)
-				fmt.Printf("\033[%d;1H", lastLine+2) // Move to row below prompt (with one blank line)
+				fmt.Printf("\033[%d;1H", lastLine+2)
 				fmt.Printf("Exiting...\n\n")
 				endChan <- struct{}{}
 				return
@@ -352,9 +381,14 @@ func main() {
 				// Set the status for the current character
 				currentWord.CharStatuses[currentWord.CharIndex] = status
 
+				// UPDATED: When the current word is completed...
 				if (len(currentWord.Value) - 1) == currentWord.CharIndex {
-					// if the word is the last word in the line then go to the next line
-					if (len(currentLine.Words) - 1) == currentLine.WordIndex {
+					// If this is the last word in the current line...
+					if currentLine.WordIndex == len(currentLine.Words)-1 {
+						// And if we are at the last generated line, generate a new one.
+						if prompt.LineIndex+2 >= len(prompt.Lines) {
+							addNewLine(prompt)
+						}
 						prompt.LineIndex++
 					} else {
 						currentLine.WordIndex++
