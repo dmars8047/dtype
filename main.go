@@ -243,6 +243,11 @@ var wordList = []string{
 	"scratch", "stomp", "raptor", "trigger", "fire",
 }
 
+type printRequest struct {
+	oldLines []string
+	newLines []string
+}
+
 // ANSI color codes
 const (
 	colorReset   = "\033[0m"
@@ -288,6 +293,7 @@ func main() {
 
 	// Create a channel to signal termination.
 	endChan := make(chan struct{})
+	printChan := make(chan printRequest, 1)
 
 	var wg sync.WaitGroup
 	// Declare timerOnce to ensure timer starts only on first key stroke.
@@ -296,7 +302,7 @@ func main() {
 	// Initially show the prompt with the cursor at the start of the first word.
 	oldScreen := prompt.RenderScreenBuffer(testDurationSeconds, testDurationSeconds)
 
-	timerMutex := sync.RWMutex{}
+	renderMutex := sync.Mutex{}
 	remainingSeconds := testDurationSeconds
 	escaped := false
 
@@ -311,19 +317,27 @@ func main() {
 		defer close(endChan)
 
 		for {
-			timerMutex.RLock()
+			renderMutex.Lock()
 			if remainingSeconds <= 0 {
-				timerMutex.RUnlock()
+				renderMutex.Unlock()
 				return
 			}
-			timerMutex.RUnlock()
+			renderMutex.Unlock()
 
 			// Get the current line and word being typed
 			currentLine := &prompt.Lines[prompt.LineIndex]
 			currentWord := &currentLine.Words[currentLine.WordIndex]
 
 			typedChar, key, err := keyboard.GetSingleKey()
+
 			if err != nil {
+				return
+			}
+
+			renderMutex.Lock()
+
+			if remainingSeconds <= 0 {
+				renderMutex.Unlock()
 				return
 			}
 
@@ -357,9 +371,15 @@ func main() {
 						case <-endChan:
 							return
 						case <-ticker.C:
-							timerMutex.Lock()
+							renderMutex.Lock()
 							remainingSeconds--
-							timerMutex.Unlock()
+							newScreen := prompt.RenderScreenBuffer(testDurationSeconds, remainingSeconds)
+							printChan <- printRequest{
+								oldLines: oldScreen,
+								newLines: newScreen,
+							}
+							oldScreen = newScreen
+							renderMutex.Unlock()
 						}
 					}
 				}()
@@ -371,6 +391,7 @@ func main() {
 				fmt.Printf("\033[%d;1H", lastLine+2)
 				fmt.Printf("Exiting...\n\n")
 				escaped = true
+				renderMutex.Unlock()
 				return
 			}
 
@@ -407,12 +428,12 @@ func main() {
 				// Set the status for the current character
 				currentWord.CharStatuses[currentWord.CharIndex] = status
 
-				// UPDATED: When the current word is completed...
+				// When the current word is completed...
 				if (len(currentWord.Value) - 1) == currentWord.CharIndex {
 					// If this is the last word in the current line...
 					if currentLine.WordIndex == len(currentLine.Words)-1 {
 						// And if we are at the last generated line, generate a new one.
-						if prompt.LineIndex+2 >= len(prompt.Lines) {
+						if prompt.LineIndex+3 >= len(prompt.Lines) {
 							addNewLine(prompt)
 						}
 						prompt.LineIndex++
@@ -424,18 +445,33 @@ func main() {
 				}
 			}
 
-			timerMutex.RLock()
-			rmain := remainingSeconds
-			timerMutex.RUnlock()
-
 			// Redraw the screen with updated state
-			newScreen := prompt.RenderScreenBuffer(testDurationSeconds, rmain)
-			diffAndPrint(oldScreen, newScreen)
-			oldScreen = newScreen
+			newScreen := prompt.RenderScreenBuffer(testDurationSeconds, remainingSeconds)
 
-			// Update the cursor position
-			row, col := computeCursorPosition(prompt, startingRow, startingCol)
-			fmt.Printf("\033[%d;%dH", row, col)
+			// Send the old and new screen to the print channel
+			printChan <- printRequest{
+				oldLines: oldScreen,
+				newLines: newScreen,
+			}
+
+			oldScreen = newScreen
+			renderMutex.Unlock()
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-endChan:
+				return
+			case request := <-printChan:
+				diffAndPrint(request.oldLines, request.newLines)
+				// Update the cursor position
+				row, col := computeCursorPosition(prompt, startingRow, startingCol)
+				fmt.Printf("\033[%d;%dH", row, col)
+			}
 		}
 	}()
 
@@ -453,8 +489,10 @@ func main() {
 	lastLine := len(oldScreen)
 	fmt.Printf("\033[%d;1H", lastLine+2)
 	fmt.Printf("Time's up!\n\n")
+
 	// Calculate the number of correct words typed
 	correctWords := 0
+
 	for _, line := range prompt.Lines {
 		for _, word := range line.Words {
 			correct := true
@@ -469,9 +507,10 @@ func main() {
 			}
 		}
 	}
+
 	fmt.Printf("You typed %d words correctly.\n", correctWords)
 	wpm := float64(correctWords) / (float64(testDurationSeconds) / 60.0)
-	fmt.Printf("That's approximately %d words per minute!\n", int(math.Ceil(wpm)))
+	fmt.Printf("That's approximately %d words per minute!\n\n", int(math.Ceil(wpm)))
 }
 
 func computeCursorPosition(prompt *Prompt, startRow, startCol int) (int, int) {
