@@ -16,7 +16,7 @@ const (
 	defaultTestDuration  = 60
 	startingLineCount    = 3
 	maxCharactersPerLine = 60
-	startingRow          = 17
+	startingRow          = 18
 	startingCol          = 0
 	welcomeMessage       = `
        ________               
@@ -28,9 +28,10 @@ const (
 	 
 Welcome to the Typing Test!
 
-You'll have {testTime} seconds to type as many words as you can. The test timer will start as soon as you begin typing.
-Press any key to start the test.
-Press ESC to exit the test at any time.
+- You'll have {testTime} seconds to type as many words as you can. 
+- The test timer will start as soon as you begin typing.
+- Press any key to start the test.
+- Press ESC to exit the test at any time.
 
 Time remaining: {remainingTime} seconds
 
