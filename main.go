@@ -297,7 +297,7 @@ func main() {
 
 	// If windows add one
 	if runtime.GOOS == "windows" {
-		runtimeStartingRow++
+		runtimeStartingRow += 1
 	}
 
 	for _, line := range oldScreen {
@@ -449,13 +449,13 @@ func main() {
 			oldScreen = newScreen
 
 			// Update the cursor position
-			row, col := computeCursorPosition(prompt, startingRow, startingCol)
+			row, col := computeCursorPosition(prompt, runtimeStartingRow, startingCol)
 			fmt.Printf("\033[%d;%dH", row, col)
 		}
 	}()
 
 	// Update the cursor position
-	row, col := computeCursorPosition(prompt, startingRow, startingCol)
+	row, col := computeCursorPosition(prompt, runtimeStartingRow, startingCol)
 	fmt.Printf("\033[%d;%dH", row, col)
 
 	wg.Wait()
