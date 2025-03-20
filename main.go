@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -293,13 +292,6 @@ func main() {
 	timerMutex := sync.RWMutex{}
 	remainingSeconds := testDurationSeconds
 
-	runtimeStartingRow := startingRow
-
-	// If windows add one
-	if runtime.GOOS == "windows" {
-		runtimeStartingRow += 1
-	}
-
 	for _, line := range oldScreen {
 		fmt.Println(line)
 	}
@@ -449,13 +441,13 @@ func main() {
 			oldScreen = newScreen
 
 			// Update the cursor position
-			row, col := computeCursorPosition(prompt, runtimeStartingRow, startingCol)
+			row, col := computeCursorPosition(prompt, startingRow, startingCol)
 			fmt.Printf("\033[%d;%dH", row, col)
 		}
 	}()
 
 	// Update the cursor position
-	row, col := computeCursorPosition(prompt, runtimeStartingRow, startingCol)
+	row, col := computeCursorPosition(prompt, startingRow, startingCol)
 	fmt.Printf("\033[%d;%dH", row, col)
 
 	wg.Wait()
