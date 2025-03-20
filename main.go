@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math"
 	"math/rand"
@@ -12,7 +13,7 @@ import (
 )
 
 const (
-	testDurationSeconds  = 60
+	defaultTestDuration  = 60
 	startingLineCount    = 3
 	maxCharactersPerLine = 60
 	startingRow          = 10
@@ -20,11 +21,11 @@ const (
 	welcomeMessage       = `
 Welcome to the Typing Test!
 
-You'll have 60 seconds to type as many words as you can. The test timer will start as soon as you begin typing.
+You'll have {seconds} seconds to type as many words as you can. The test timer will start as soon as you begin typing.
 Press any key to start the test.
 Press ESC to exit the test at any time.
 
-Time remaining: 60 seconds
+Time remaining: {seconds} seconds
 
 `
 )
@@ -127,10 +128,9 @@ func diffAndPrint(oldLines, newLines []string) {
 }
 
 // Renamed RenderScreenBuffer replaces the old Print method to build and return the rendered screen buffer.
-func (p *Prompt) RenderScreenBuffer() []string {
+func (p *Prompt) RenderScreenBuffer(welcome string) []string {
 	var sb strings.Builder
-
-	sb.WriteString(welcomeMessage)
+	sb.WriteString(welcome)
 
 	for lineIdx, line := range p.Lines {
 		for _, word := range line.Words {
@@ -215,12 +215,17 @@ var wordList = []string{
 	"back", "after", "use", "two", "how", "our", "work", "first", "well", "way",
 	"even", "new", "want", "because", "any", "these", "give", "day", "most", "us",
 	"those", "such", "through", "between", "both", "few", "while", "might", "place",
-	"long", "need", "same", "right", "look", "still", "own", "last", "never", "under",
+	"long", "need", "same", "right", "still", "own", "last", "never", "under",
 	"double", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
 	"triple", "baseball", "video", "computer", "global", "save", "widget", "cell", "stream", "input",
 	"output", "love", "peace", "world", "hello", "tangle", "hero", "villain",
-	"goodbye", "goodnight", "morning", "night", "day", "week", "month", "year", "super",
+	"goodbye", "goodnight", "morning", "night", "week", "month", "super",
 	"wifi", "game", "click", "groove", "raspberry", "put", "post", "delete", "tiny", "core",
+	"pasta", "pizza", "taco", "cheese", "water", "honey", "iron", "diamond", "gold", "silver",
+	"dungeon", "dragon", "sword", "shield", "armor", "helmet", "boots", "gloves", "ring", "amulet", "castle",
+	"eagle", "whale", "sushi", "ghost", "zombie", "rush", "crash", "slice", "bakery", "coffee",
+	"cocktail", "beer", "bear", "lion", "tiger", "attack", "decay", "envelope", "guitar", "piano", "teeth", "bite",
+	"scratch", "stomp", "raptor", "trigger", "fire",
 }
 
 // ANSI color codes
@@ -234,6 +239,23 @@ const (
 )
 
 func main() {
+	testDurationSeconds := defaultTestDuration
+
+	// Get the -t flag value if it is provided and valid
+	flag.IntVar(&testDurationSeconds, "t", defaultTestDuration, "The duration of the typing test in seconds. Must be between 1 and 300.")
+
+	flag.Parse()
+
+	if testDurationSeconds < 1 {
+		fmt.Println("The test duration must be at least 1 second.")
+		return
+	}
+
+	if testDurationSeconds > 300 {
+		fmt.Println("The test duration must be less than 300 seconds.")
+		return
+	}
+
 	clearScreen()
 
 	err := keyboard.Open()
@@ -243,17 +265,20 @@ func main() {
 	}
 	defer keyboard.Close()
 
+	welcome := strings.Replace(welcomeMessage, "{seconds}", fmt.Sprintf("%d", testDurationSeconds), 2)
+
 	// Present the prompt (unmodified text)
 	prompt := NewPrompt()
 
 	// Create a channel to signal termination.
-	endChan := make(chan struct{}, 1)
+	endChan := make(chan struct{})
+
 	var wg sync.WaitGroup
 	// Declare timerOnce to ensure timer starts only on first key stroke.
 	var timerOnce sync.Once
 
 	// Initially show the prompt with the cursor at the start of the first word.
-	oldScreen := prompt.RenderScreenBuffer()
+	oldScreen := prompt.RenderScreenBuffer(welcome)
 	for _, line := range oldScreen {
 		fmt.Println(line)
 	}
@@ -262,6 +287,7 @@ func main() {
 	go func() {
 		defer keyboard.Close()
 		defer wg.Done()
+		defer close(endChan)
 
 		for {
 			// Get the current line and word being typed
@@ -270,7 +296,6 @@ func main() {
 
 			typedChar, key, err := keyboard.GetSingleKey()
 			if err != nil {
-				endChan <- struct{}{}
 				return
 			}
 
@@ -279,7 +304,7 @@ func main() {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					timer := time.NewTimer(testDurationSeconds * time.Second)
+					timer := time.NewTimer(time.Duration(testDurationSeconds) * time.Second)
 					select {
 					case <-endChan:
 						return
@@ -312,8 +337,10 @@ func main() {
 					}
 				}()
 
+				wg.Add(1)
 				// Use ANSI codes to save and restore the cursor position.
 				go func() {
+					defer wg.Done()
 					ticker := time.NewTicker(1 * time.Second)
 					defer ticker.Stop()
 					remaining := testDurationSeconds
@@ -330,10 +357,10 @@ func main() {
 							return
 						}
 						select {
-						case <-ticker.C:
-							remaining--
 						case <-endChan:
 							return
+						case <-ticker.C:
+							remaining--
 						}
 					}
 				}()
@@ -344,7 +371,6 @@ func main() {
 				lastLine := len(oldScreen)
 				fmt.Printf("\033[%d;1H", lastLine+2)
 				fmt.Printf("Exiting...\n\n")
-				endChan <- struct{}{}
 				return
 			}
 
@@ -399,7 +425,7 @@ func main() {
 			}
 
 			// Redraw the screen with updated state
-			newScreen := prompt.RenderScreenBuffer()
+			newScreen := prompt.RenderScreenBuffer(welcome)
 			diffAndPrint(oldScreen, newScreen)
 			oldScreen = newScreen
 
