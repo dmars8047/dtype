@@ -113,6 +113,10 @@ func addNewLine(prompt *Prompt) {
 func diffAndPrint(oldLines, newLines []string) {
 	maxLines := max(len(oldLines), len(newLines))
 
+	// Hide the cursor
+	fmt.Print("\033[?25l")
+	defer fmt.Print("\033[?25h") // Show the cursor again when done
+
 	for i := range maxLines {
 		oldLine := ""
 		newLine := ""
@@ -275,6 +279,9 @@ func main() {
 		return
 	}
 	defer keyboard.Close()
+
+	// Ensure the cursor is shown again when the program exits
+	defer fmt.Print("\033[?25h")
 
 	// Present the prompt (unmodified text)
 	prompt := NewPrompt()
