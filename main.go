@@ -16,10 +16,9 @@ const (
 	defaultTestDuration  = 60
 	startingLineCount    = 3
 	maxCharactersPerLine = 60
-	startingRow          = 18
+	startingRow          = 17
 	startingCol          = 0
-	welcomeMessage       = `
-       ________               
+	welcomeMessage       = `       ________               
   ____/ /_  __/_  ______  ___ 
  / __  / / / / / / / __ \/ _ \
 / /_/ / / / / /_/ / /_/ /  __/
@@ -299,6 +298,7 @@ func main() {
 
 	timerMutex := sync.RWMutex{}
 	remainingSeconds := testDurationSeconds
+	escaped := false
 
 	for _, line := range oldScreen {
 		fmt.Println(line)
@@ -370,6 +370,7 @@ func main() {
 				lastLine := len(oldScreen)
 				fmt.Printf("\033[%d;1H", lastLine+2)
 				fmt.Printf("Exiting...\n\n")
+				escaped = true
 				return
 			}
 
@@ -443,6 +444,10 @@ func main() {
 	fmt.Printf("\033[%d;%dH", row, col)
 
 	wg.Wait()
+
+	if escaped {
+		return
+	}
 
 	// Print "Time's up!" below the prompt on a new row.
 	lastLine := len(oldScreen)
