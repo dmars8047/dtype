@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -16,16 +17,23 @@ const (
 	defaultTestDuration  = 60
 	startingLineCount    = 3
 	maxCharactersPerLine = 60
-	startingRow          = 10
+	startingRow          = 17
 	startingCol          = 0
 	welcomeMessage       = `
+       ________               
+  ____/ /_  __/_  ______  ___ 
+ / __  / / / / / / / __ \/ _ \
+/ /_/ / / / / /_/ / /_/ /  __/
+\__,_/ /_/  \__, / .___/\___/ 
+	   /____/_/           
+	 
 Welcome to the Typing Test!
 
-You'll have {seconds} seconds to type as many words as you can. The test timer will start as soon as you begin typing.
+You'll have {testTime} seconds to type as many words as you can. The test timer will start as soon as you begin typing.
 Press any key to start the test.
 Press ESC to exit the test at any time.
 
-Time remaining: {seconds} seconds
+Time remaining: {remainingTime} seconds
 
 `
 )
@@ -128,8 +136,12 @@ func diffAndPrint(oldLines, newLines []string) {
 }
 
 // Renamed RenderScreenBuffer replaces the old Print method to build and return the rendered screen buffer.
-func (p *Prompt) RenderScreenBuffer(welcome string) []string {
+func (p *Prompt) RenderScreenBuffer(testTime, remainingSeconds int) []string {
 	var sb strings.Builder
+
+	welcome := strings.Replace(welcomeMessage, "{testTime}", fmt.Sprintf("%d", testTime), 1)
+	welcome = strings.Replace(welcome, "{remainingTime}", fmt.Sprintf("%d", remainingSeconds), 1)
+
 	sb.WriteString(welcome)
 
 	for lineIdx, line := range p.Lines {
@@ -265,8 +277,6 @@ func main() {
 	}
 	defer keyboard.Close()
 
-	welcome := strings.Replace(welcomeMessage, "{seconds}", fmt.Sprintf("%d", testDurationSeconds), 2)
-
 	// Present the prompt (unmodified text)
 	prompt := NewPrompt()
 
@@ -278,7 +288,18 @@ func main() {
 	var timerOnce sync.Once
 
 	// Initially show the prompt with the cursor at the start of the first word.
-	oldScreen := prompt.RenderScreenBuffer(welcome)
+	oldScreen := prompt.RenderScreenBuffer(testDurationSeconds, testDurationSeconds)
+
+	timerMutex := sync.RWMutex{}
+	remainingSeconds := testDurationSeconds
+
+	runtimeStartingRow := startingRow
+
+	// If windows add one
+	if runtime.GOOS == "windows" {
+		runtimeStartingRow++
+	}
+
 	for _, line := range oldScreen {
 		fmt.Println(line)
 	}
@@ -343,24 +364,18 @@ func main() {
 					defer wg.Done()
 					ticker := time.NewTicker(1 * time.Second)
 					defer ticker.Stop()
-					remaining := testDurationSeconds
+
 					for {
-						// Save current cursor position.
-						fmt.Print("\033[s")
-						// Move the cursor to the countdown line (assume row startingRow-1).
-						fmt.Printf("\033[%d;1H", startingRow-2)
-						// Print the countdown message and clear the remainder of the line.
-						fmt.Printf("Time remaining: %d seconds\033[K", remaining)
-						// Restore the previous cursor position.
-						fmt.Print("\033[u")
-						if remaining <= 0 {
+						if remainingSeconds <= 0 {
 							return
 						}
 						select {
 						case <-endChan:
 							return
 						case <-ticker.C:
-							remaining--
+							timerMutex.Lock()
+							remainingSeconds--
+							timerMutex.Unlock()
 						}
 					}
 				}()
@@ -424,8 +439,12 @@ func main() {
 				}
 			}
 
+			timerMutex.RLock()
+			rmain := remainingSeconds
+			timerMutex.RUnlock()
+
 			// Redraw the screen with updated state
-			newScreen := prompt.RenderScreenBuffer(welcome)
+			newScreen := prompt.RenderScreenBuffer(testDurationSeconds, rmain)
 			diffAndPrint(oldScreen, newScreen)
 			oldScreen = newScreen
 
