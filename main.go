@@ -245,7 +245,12 @@ var wordList = []string{
 	"brew", "splat", "ice", "zen", "tend", "fork", "bell", "pan",
 	"cup", "salt", "rain", "snow", "fast", "jump", "lap", "eye", "ear", "nose",
 	"quantum", "atom", "moon", "quick", "web", "rent", "cloud", "final",
-	"flex",
+	"flex", "toad", "frog", "leap", "hop", "skip", "ape", "peach", "pear", "plum", "olive",
+	"dead", "sling", "power", "egg", "waffle", "jam", "kitty", "dye", "claw", "eel",
+	"joy", "fun", "game", "mushroom", "card", "bike", "bus", "cart", "thunder", "struck",
+	"hilt", "dog", "cat", "fish", "rat", "bee", "owl", "broom",
+	"hit", "bat", "ball", "spat", "mat", "set", "net", "knot", "poem",
+	"tree", "leaf", "bark", "root", "stem", "left", "lift", "soak", "dry", "wet", "exit",
 }
 
 type printRequest struct {
