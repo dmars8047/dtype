@@ -49,6 +49,8 @@ type Prompt struct {
 	Lines []Line
 	// The index of the current line being typed
 	LineIndex int
+	// The number of raw mistakes made during the test
+	NumMistakes uint
 }
 
 func NewPrompt() *Prompt {
@@ -426,6 +428,7 @@ func main() {
 					status = Correct
 				} else {
 					status = Incorrect
+					prompt.NumMistakes++
 				}
 
 				// Set the status for the current character
@@ -495,25 +498,84 @@ func main() {
 
 	// Calculate the number of correct words typed
 	correctWords := 0
+	incorrectWords := 0
+	mostRecentIncompoleteWordIndex := wordAddress{
+		lineIndex: -1,
+		wordIndex: -1,
+	}
 
 	for _, line := range prompt.Lines {
+		// tracks whether the current word was typed (regardless of correctness)
+		wordWasTyped := true
 		for _, word := range line.Words {
 			correct := true
 			for _, status := range word.CharStatuses {
 				if status != Correct {
+					if status == NotSet {
+						wordWasTyped = false
+						mostRecentIncompoleteWordIndex.lineIndex = int16(prompt.LineIndex)
+						mostRecentIncompoleteWordIndex.wordIndex = int16(line.WordIndex)
+					}
 					correct = false
 					break
 				}
 			}
+
 			if correct {
 				correctWords++
+			} else {
+				incorrectWords++
 			}
+
+			if !wordWasTyped {
+				break
+			}
+		}
+
+		if !wordWasTyped {
+			break
 		}
 	}
 
-	fmt.Printf("You typed %d words correctly.\n", correctWords)
+	// Make sure that the most recent incomplete word is actually incomplete. The trailing space should not be counted towards the word.
+	if mostRecentIncompoleteWordIndex.lineIndex != -1 && mostRecentIncompoleteWordIndex.wordIndex != -1 {
+		line := prompt.Lines[mostRecentIncompoleteWordIndex.lineIndex]
+		word := line.Words[mostRecentIncompoleteWordIndex.wordIndex]
+
+		wordIsCorrect := true
+
+		for i, status := range word.CharStatuses {
+			if i == len(word.CharStatuses)-1 {
+				break
+			}
+
+			if status == NotSet {
+				wordIsCorrect = false
+				incorrectWords--
+				break
+			} else if status == Incorrect {
+				wordIsCorrect = false
+				break
+			}
+		}
+
+		if wordIsCorrect {
+			correctWords++
+			incorrectWords--
+		}
+	}
+
 	wpm := float64(correctWords) / (float64(testDurationSeconds) / 60.0)
-	fmt.Printf("That's approximately %d words per minute!\n\n", int(math.Ceil(wpm)))
+	fmt.Printf("## Results ##\n\n")
+	fmt.Printf("Speed - %s%d%s words per minute!\n", colorBlue, int(math.Ceil(wpm)), colorReset)
+	fmt.Printf("You typed %s%d%s words correctly.\n", colorGreen, correctWords, colorReset)
+	fmt.Printf("You made %s%d%s incorrect words.\n", colorRed, incorrectWords, colorReset)
+	fmt.Printf("You made %s%d%s incorrect keystrokes (before any corrections).\n", colorDarkRed, prompt.NumMistakes, colorReset)
+}
+
+type wordAddress struct {
+	lineIndex int16
+	wordIndex int16
 }
 
 func computeCursorPosition(prompt *Prompt, startRow, startCol int) (int, int) {
