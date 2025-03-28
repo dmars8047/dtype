@@ -538,22 +538,21 @@ func main() {
 	}
 
 	// Make sure that the most recent incomplete word is actually incomplete. The trailing space should not be counted towards the word.
+	// Adjust the count for the most recent incomplete word.
 	if mostRecentIncompoleteWordIndex.lineIndex != -1 && mostRecentIncompoleteWordIndex.wordIndex != -1 {
 		line := prompt.Lines[mostRecentIncompoleteWordIndex.lineIndex]
 		word := line.Words[mostRecentIncompoleteWordIndex.wordIndex]
 
 		wordIsCorrect := true
-
-		for i, status := range word.CharStatuses {
-			if i == len(word.CharStatuses)-1 {
-				break
-			}
-
+		// Iterate up to (excluding) the trailing space.
+		for _, status := range word.CharStatuses[:len(word.CharStatuses)-1] {
 			if status == NotSet {
 				wordIsCorrect = false
+				// Adjust the incorrect counter if this word was prematurely counted.
 				incorrectWords--
 				break
-			} else if status == Incorrect {
+			}
+			if status == Incorrect {
 				wordIsCorrect = false
 				break
 			}
@@ -561,6 +560,7 @@ func main() {
 
 		if wordIsCorrect {
 			correctWords++
+			// Adjust incorrect count since this word was overcounted as an error.
 			incorrectWords--
 		}
 	}
